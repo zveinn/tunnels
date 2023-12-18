@@ -9,6 +9,8 @@ import (
 	"os/exec"
 	"syscall"
 	"unsafe"
+
+	"github.com/jackpal/gateway"
 )
 
 type syscallAddAddrV4 struct {
@@ -34,6 +36,10 @@ type syscallSetFlags struct {
 	Name  [16]byte
 	Flags int16
 }
+
+// TODO
+// 1. Find default gateway
+// 2. Find Default DNS ( only on windows )
 
 type Interface struct {
 	Name        string
@@ -99,6 +105,11 @@ func (IF *Interface) Syscall_NetMask() (err error) {
 	}
 
 	return
+}
+
+func FindGateway() {
+	gw, err := gateway.DiscoverGateway()
+	fmt.Println(gw, err)
 }
 
 // func (IF *Interface) Syscall_Addrv6() (err error) {

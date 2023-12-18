@@ -31,6 +31,7 @@ func main() {
 	// 	fmt.Println("ADDR FAIL")
 	// 	panic(err)
 	// }
+	tunnels.FindGateway()
 
 	err := IF.Create()
 	if err != nil {
@@ -44,11 +45,11 @@ func main() {
 		panic(err)
 	}
 
-	err = IF.Syscall_Addrv6()
-	if err != nil {
-		fmt.Println("ADDRv6 FAIL")
-		panic(err)
-	}
+	// err = IF.Syscall_Addrv6()
+	// if err != nil {
+	// 	fmt.Println("ADDRv6 FAIL")
+	// 	panic(err)
+	// }
 
 	err = IF.Syscall_NetMask()
 	if err != nil {
