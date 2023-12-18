@@ -11,9 +11,13 @@ import (
 	"unsafe"
 )
 
-type syscallAddAddr struct {
+type syscallAddAddrV4 struct {
 	Name [16]byte
 	syscall.RawSockaddrInet4
+}
+type syscallAddAddrV6 struct {
+	Name [16]byte
+	syscall.RawSockaddrInet6
 }
 
 type syscallChangeMTU struct {
@@ -32,16 +36,17 @@ type syscallSetFlags struct {
 }
 
 type Interface struct {
-	Name       string
-	Address    string
-	NetMask    string
-	TxQueuelen int32
-	MTU        int32
-	User       uint
-	Group      uint
-	Multiqueue bool
-	Persistent bool
-	TunnelFile string
+	Name        string
+	IPv4Address string
+	IPv6Address string
+	NetMask     string
+	TxQueuelen  int32
+	MTU         int32
+	User        uint
+	Group       uint
+	Multiqueue  bool
+	Persistent  bool
+	TunnelFile  string
 
 	//
 	RWC io.ReadWriteCloser
@@ -79,7 +84,7 @@ func (IF *Interface) Syscall_MTU() (err error) {
 }
 
 func (IF *Interface) Syscall_NetMask() (err error) {
-	var ifr syscallAddAddr
+	var ifr syscallAddAddrV4
 	ifr.Port = 0
 	ifr.Family = syscall.AF_INET
 
@@ -96,13 +101,55 @@ func (IF *Interface) Syscall_NetMask() (err error) {
 	return
 }
 
+// func (IF *Interface) Syscall_Addrv6() (err error) {
+// 	iface, err := net.InterfaceByName(IF.Name)
+// 	if err != nil {
+// 		return err
+// 	}
+//
+// 	var ifr syscallAddAddrV6
+// 	ifr.Port = 0
+// 	ifr.Family = syscall.AF_INET6
+// 	ifr.Flowinfo = uint32(0)
+// 	ifr.Scope_id = uint32(iface.Index)
+//
+// 	copy(ifr.Name[:], []byte(IF.Name))
+// 	copy(ifr.Addr[:], net.ParseIP(IF.IPv6Address).To16())
+// 	fmt.Println(ifr)
+//
+// 	if err = socketCtlv6(
+// 		syscall.SIOCSIFADDR,
+// 		uintptr(unsafe.Pointer(&ifr)),
+// 	); err != nil {
+// 		return
+// 	}
+//
+// 	return
+// }
+
+// func (IF *Interface) IPv6_ADDR() (err error) {
+// 	out, err := exec.Command(
+// 		"ip",
+// 		"-6",
+// 		"addr",
+// 		"add",
+// 		IF.IPv6Address,
+// 		"dev",
+// 		IF.Name,
+// 	).CombinedOutput()
+// 	if err != nil {
+// 		return errors.New(err.Error() + "---" + string(out))
+// 	}
+// 	return
+// }
+
 func (IF *Interface) Syscall_Addr() (err error) {
-	var ifr syscallAddAddr
+	var ifr syscallAddAddrV4
 	ifr.Port = 0
 	ifr.Family = syscall.AF_INET
 
 	copy(ifr.Name[:], []byte(IF.Name))
-	copy(ifr.Addr[:], net.ParseIP(IF.Address).To4())
+	copy(ifr.Addr[:], net.ParseIP(IF.IPv4Address).To4())
 
 	if err = socketCtl(
 		syscall.SIOCSIFADDR,
@@ -280,11 +327,29 @@ func (IF *Interface) Create() (err error) {
 	return
 }
 
+func socketCtlv6(request uintptr, argp uintptr) error {
+	fd, err := syscall.Socket(
+		syscall.AF_INET6,
+		syscall.SOCK_DGRAM,
+		syscall.IPPROTO_IP,
+	)
+	defer syscall.Close(fd)
+	if err != nil {
+		return err
+	}
+
+	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), uintptr(request), argp)
+	if errno != 0 {
+		return os.NewSyscallError("ioctl", errno)
+	}
+	return nil
+}
+
 func socketCtl(request uintptr, argp uintptr) error {
 	fd, err := syscall.Socket(
 		syscall.AF_INET,
 		syscall.SOCK_DGRAM,
-		0,
+		syscall.IPPROTO_IP,
 	)
 	defer syscall.Close(fd)
 	if err != nil {

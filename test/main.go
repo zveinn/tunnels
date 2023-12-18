@@ -8,15 +8,29 @@ import (
 
 func main() {
 	IF := &tunnels.Interface{
-		Name:       "nvpn-new",
-		Address:    "10.6.6.10",
-		NetMask:    "255.255.255.0",
-		TxQueuelen: 3000,
-		MTU:        1501,
-		Persistent: false,
+		Name:        "nvpn-new",
+		IPv4Address: "10.6.6.10",
+		IPv6Address: "fe80::1",
+		NetMask:     "255.255.255.0",
+		TxQueuelen:  3000,
+		MTU:         1501,
+		Persistent:  true,
 		// User:       1000,
 		// Group:      1000,
 	}
+
+	fmt.Println(IF.Name)
+	fmt.Println(IF.IPv4Address)
+	fmt.Println(IF.FD)
+	fmt.Println(IF.Group)
+	fmt.Println(IF.User)
+	fmt.Println(IF.RWC)
+	// time.Sleep(2 * time.Second)
+	// err := IF.Syscall_Delete()
+	// if err != nil {
+	// 	fmt.Println("ADDR FAIL")
+	// 	panic(err)
+	// }
 
 	err := IF.Create()
 	if err != nil {
@@ -24,18 +38,18 @@ func main() {
 		panic(err)
 	}
 
-	fmt.Println(IF.Name)
-	fmt.Println(IF.Address)
-	fmt.Println(IF.FD)
-	fmt.Println(IF.Group)
-	fmt.Println(IF.User)
-	fmt.Println(IF.RWC)
-
 	err = IF.Syscall_Addr()
 	if err != nil {
 		fmt.Println("ADDR FAIL")
 		panic(err)
 	}
+
+	err = IF.Syscall_Addrv6()
+	if err != nil {
+		fmt.Println("ADDRv6 FAIL")
+		panic(err)
+	}
+
 	err = IF.Syscall_NetMask()
 	if err != nil {
 		fmt.Println("NETMASK FAIL")
@@ -60,17 +74,12 @@ func main() {
 		panic(err)
 	}
 
-	err = tunnels.IP_AddRoute("9.9.9.9", IF.Address, "0")
+	err = tunnels.IP_AddRoute("9.9.9.9", IF.IPv4Address, "0")
 	if err != nil {
 		fmt.Println("ROUTE FAIL", err)
 		panic(1)
 	}
 
-	// err := IF.Syscall_Delete()
-	// if err != nil {
-	// 	fmt.Println("ADDR FAIL")
-	// 	panic(err)
-	// }
 	inBuff := make([]byte, 1000)
 
 	for {
