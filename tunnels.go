@@ -1,20 +1,84 @@
-package tunnel
+package tunnels
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"net"
 	"os"
 	"os/exec"
-	"strings"
 	"syscall"
 	"unsafe"
 )
 
+const (
+	ifReqSize = syscall.IFNAMSIZ + 64
+)
+
+type syscallAddRoute struct {
+	Name [16]byte
+
+	rt_dst     syscall.RawSockaddrInet4 // Destination address
+	rt_gateway syscall.RawSockaddrInet4 // Gateway address
+	rt_genmask syscall.RawSockaddrInet4 // Netmask
+
+	rt_flags  uint16
+	Metric    int32
+	RefCount  int
+	Use       int
+	Priority  int
+	Device    [16]byte // Interface name
+	MTU       int
+	Window    int
+	IRTT      int
+	Reserved1 int
+	Reserved2 int
+}
+
+func (IF *Interface) Syscall_AddRoute_INPROGRESS(destination, gateway, netmask, name string) error {
+	sock, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_DGRAM, 0)
+	if err != nil {
+		return err
+	}
+	defer syscall.Close(sock)
+
+	var dst, gw, mask syscall.RawSockaddrInet4
+	var route syscallAddRoute
+	// copy(route.Device[:], []byte(name))
+
+	copy(dst.Addr[:], net.ParseIP(destination).To4())
+	dst.Family = syscall.AF_INET
+	// dst.Port = 0
+
+	copy(gw.Addr[:], net.ParseIP(gateway).To4())
+	gw.Family = syscall.AF_INET
+	// gw.Port = 0
+
+	copy(mask.Addr[:], net.ParseIP(netmask).To4())
+	mask.Family = syscall.AF_INET
+	// mask.Port = 0
+
+	route.rt_dst = dst
+	route.rt_gateway = gw
+	route.rt_genmask = mask
+	// route.Metric = 0
+	route.rt_flags = syscall.RTF_GATEWAY | syscall.RTF_UP
+	// route.Device = [16]byte{}
+	// copy(route.Device[:], ifaceName)
+
+	fmt.Println("ROUTE:", route)
+
+	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(sock), syscall.SIOCADDRT, uintptr(unsafe.Pointer(&route)))
+	if errno != 0 {
+		return fmt.Errorf("Failed to add route: %v", errno)
+	}
+
+	return nil
+}
+
 type syscallAddAddr struct {
 	Name [16]byte
-	Addr [4]byte
-	Pad  [8]byte
+	syscall.RawSockaddrInet4
 }
 
 type syscallChangeMTU struct {
@@ -22,22 +86,54 @@ type syscallChangeMTU struct {
 	MTU  int32
 }
 
-type Interface struct {
-	Name    string
-	Address string
-	RWC     io.ReadWriteCloser
-	User    uint
-	Group   uint
-	FD      uintptr
+type syscallChangeTXQueueLen struct {
+	Name       [16]byte
+	TxQueueLen int32
 }
 
-func (IF *Interface) Syscall_MTU(mtu int32) (err error) {
+type syscallSetFlags struct {
+	Name  [16]byte
+	Flags int16
+}
+
+type Interface struct {
+	Name       string
+	Address    string
+	NetMask    string
+	TxQueuelen int32
+	MTU        int32
+	User       uint
+	Group      uint
+	Multiqueue bool
+	Persistent bool
+	TunnelFile string
+
+	//
+	RWC io.ReadWriteCloser
+	FD  uintptr
+}
+
+func (IF *Interface) Syscall_TXQueuelen() (err error) {
+	var ifr syscallChangeTXQueueLen
+	copy(ifr.Name[:], []byte(IF.Name))
+	ifr.TxQueueLen = IF.TxQueuelen
+
+	if err = socketCtl(
+		syscall.SIOCSIFTXQLEN,
+		uintptr(unsafe.Pointer(&ifr)),
+	); err != nil {
+		return
+	}
+
+	return
+}
+
+func (IF *Interface) Syscall_MTU() (err error) {
 	var ifr syscallChangeMTU
 	copy(ifr.Name[:], []byte(IF.Name))
-	ifr.MTU = mtu
+	ifr.MTU = IF.MTU
 
-	if err = ioctl(
-		IF.FD,
+	if err = socketCtl(
 		syscall.SIOCSIFMTU,
 		uintptr(unsafe.Pointer(&ifr)),
 	); err != nil {
@@ -47,19 +143,33 @@ func (IF *Interface) Syscall_MTU(mtu int32) (err error) {
 	return
 }
 
-func (IF *Interface) Syscall_Addr(ip string) (err error) {
-	var addr [4]byte
-	if ip == "" {
-		ip = IF.Address
-	}
-	copy(addr[:], net.ParseIP(ip).To4())
-
+func (IF *Interface) Syscall_NetMask() (err error) {
 	var ifr syscallAddAddr
-	copy(ifr.Name[:], []byte(IF.Name))
-	copy(ifr.Addr[:], addr[:])
+	ifr.Port = 0
+	ifr.Family = syscall.AF_INET
 
-	if err = ioctl(
-		IF.FD,
+	copy(ifr.Name[:], []byte(IF.Name))
+	copy(ifr.Addr[:], net.ParseIP(IF.NetMask).To4())
+
+	if err = socketCtl(
+		syscall.SIOCSIFNETMASK,
+		uintptr(unsafe.Pointer(&ifr)),
+	); err != nil {
+		return
+	}
+
+	return
+}
+
+func (IF *Interface) Syscall_Addr() (err error) {
+	var ifr syscallAddAddr
+	ifr.Port = 0
+	ifr.Family = syscall.AF_INET
+
+	copy(ifr.Name[:], []byte(IF.Name))
+	copy(ifr.Addr[:], net.ParseIP(IF.Address).To4())
+
+	if err = socketCtl(
 		syscall.SIOCSIFADDR,
 		uintptr(unsafe.Pointer(&ifr)),
 	); err != nil {
@@ -69,7 +179,59 @@ func (IF *Interface) Syscall_Addr(ip string) (err error) {
 	return
 }
 
-func (IF *Interface) Addr(ip string) (err error) {
+func (IF *Interface) Syscall_DOWN() (err error) {
+	var ifr syscallSetFlags
+
+	copy(ifr.Name[:], []byte(IF.Name))
+	ifr.Flags |= 0x0
+
+	if err = socketCtl(
+		syscall.SIOCSIFFLAGS,
+		uintptr(unsafe.Pointer(&ifr)),
+	); err != nil {
+		return
+	}
+
+	return
+}
+
+func (IF *Interface) Syscall_Delete() (err error) {
+	var ifr syscallSetFlags
+	DOR := 1 << 17
+
+	copy(ifr.Name[:], []byte(IF.Name))
+	ifr.Flags |= 0x0
+	ifr.Flags = int16(DOR)
+
+	if err = socketCtl(
+		syscall.SIOCSIFFLAGS,
+		uintptr(unsafe.Pointer(&ifr)),
+	); err != nil {
+		return
+	}
+
+	_ = exec.Command("ip", "link", "delete", IF.Name).Run()
+
+	return
+}
+
+func (IF *Interface) Syscall_UP() (err error) {
+	var ifr syscallSetFlags
+
+	copy(ifr.Name[:], []byte(IF.Name))
+	ifr.Flags |= 0x1
+
+	if err = socketCtl(
+		syscall.SIOCSIFFLAGS,
+		uintptr(unsafe.Pointer(&ifr)),
+	); err != nil {
+		return
+	}
+
+	return
+}
+
+func (IF *Interface) IP_ADDR(ip string) (err error) {
 	out, err := exec.Command(
 		"ip",
 		"addr",
@@ -85,7 +247,7 @@ func (IF *Interface) Addr(ip string) (err error) {
 	return
 }
 
-func (IF *Interface) Down() (err error) {
+func (IF *Interface) IP_DOWN() (err error) {
 	out, err := exec.Command(
 		"ip",
 		"link",
@@ -101,7 +263,7 @@ func (IF *Interface) Down() (err error) {
 	return
 }
 
-func (IF *Interface) Up() (err error) {
+func (IF *Interface) IP_UP() (err error) {
 	out, err := exec.Command("ip", "link", "set", "dev", IF.Name, "up").Output()
 	if err != nil {
 		log.Println("ERROR || ip link set dev", IF.Name, "up || err:", err, " || rawout: ", string(out))
@@ -110,7 +272,7 @@ func (IF *Interface) Up() (err error) {
 	return
 }
 
-func (i *Interface) SetTXQueueLen(ql string) (err error) {
+func (i *Interface) IP_TXQueueLen(ql string) (err error) {
 	out, err := exec.Command("ip", "link", "set", i.Name, "txqueuelen", ql).Output()
 	if err != nil {
 		log.Println("ERROR || ip link set", i.Name, "txqueuelen", ql, " || err:", err, " || rawout: ", string(out))
@@ -119,17 +281,17 @@ func (i *Interface) SetTXQueueLen(ql string) (err error) {
 	return
 }
 
-func (IF *Interface) SetMTU(mtu string) (err error) {
-	out, err := exec.Command("ip", "link", "set", IF.Name, "mtu", mtu).Output()
+func (IF *Interface) IP_MTU() (err error) {
+	out, err := exec.Command("ip", "link", "set", IF.Name, "mtu", fmt.Sprint(IF.MTU)).Output()
 	if err != nil {
-		log.Println("ERROR || ip link set", IF.Name, "mtu", mtu, " || err:", err, " || rawout: ", string(out))
+		log.Println("ERROR || ip link set", IF.Name, "mtu", IF.MTU, " || err:", err, " || rawout: ", string(out))
 		return err
 	}
 	return
 }
 
-func (IF *Interface) AddRoute(network string, gateway string, metric string) (err error) {
-	_ = IF.DelRoute(network, gateway, metric)
+func (IF *Interface) IP_AddRoute(network string, gateway string, metric string) (err error) {
+	_ = IF.IP_DelRoute(network, gateway, metric)
 	out, err := exec.Command("ip", "route", "add", network, "via", gateway, "metric", metric).Output()
 	if err != nil {
 		log.Println("ERROR || ip route add", network, "via", gateway, "metric", metric, " || err:", err, " || rawout: ", string(out))
@@ -138,7 +300,7 @@ func (IF *Interface) AddRoute(network string, gateway string, metric string) (er
 	return
 }
 
-func (i *Interface) DelRoute(network string, gateway string, metric string) (err error) {
+func (i *Interface) IP_DelRoute(network string, gateway string, metric string) (err error) {
 	out, err := exec.Command("ip", "route", "delete", network, "via", gateway, "metric", metric).Output()
 	if err != nil {
 		log.Println("ERROR || ip route delete", network, "via", gateway, "metric", metric, " || err:", err, " || rawout: ", string(out))
@@ -153,28 +315,14 @@ type syscallCreateIF struct {
 	pad   [0x28 - 0x10 - 2]byte
 }
 
-type Config struct {
-	Name       string
-	Address    string
-	User       uint
-	Group      uint
-	Multiqueue bool
-	Persistent bool
-	TunnelFile string
-}
-
-func NewTunnel(C *Config) (IF *Interface, err error) {
-	IF = new(Interface)
-
-	if C.TunnelFile == "" {
-		C.TunnelFile = "/dev/net/tun"
+func (IF *Interface) Create() (err error) {
+	if IF.TunnelFile == "" {
+		IF.TunnelFile = "/dev/net/tun"
 	}
 
-	IF.Address = C.Address
-
-	fd, err := syscall.Open(C.TunnelFile, os.O_RDWR|syscall.O_NONBLOCK, 0)
+	fd, err := syscall.Open(IF.TunnelFile, os.O_RDWR|syscall.O_NONBLOCK, 0)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	// fdUintPtr := uintptr(fd)
@@ -182,42 +330,60 @@ func NewTunnel(C *Config) (IF *Interface, err error) {
 
 	var flags uint16 = 0x1000
 	flags |= 0x0001
-	if C.Multiqueue {
+	if IF.Multiqueue {
 		flags |= 0x0100 // MULTIQUEUE FLAG
 	}
 
 	var req syscallCreateIF
 	req.Flags = flags
-	copy(req.Name[:], []byte(C.Name))
+	copy(req.Name[:], []byte(IF.Name))
 
-	if err = ioctl(IF.FD, syscall.TUNSETIFF, uintptr(unsafe.Pointer(&req))); err != nil {
-		return nil, err
+	if err = tunnelCtl(IF.FD, syscall.TUNSETIFF, uintptr(unsafe.Pointer(&req))); err != nil {
+		return err
 	}
-	IF.Name = strings.Trim(string(req.Name[:]), "\x00")
+	// IF.Name = strings.Trim(string(req.Name[:]), "\x00")
 
 	if IF.User != 0 {
-		if err = ioctl(IF.FD, syscall.TUNSETOWNER, uintptr(IF.User)); err != nil {
-			return nil, err
+		if err = tunnelCtl(IF.FD, syscall.TUNSETOWNER, uintptr(IF.User)); err != nil {
+			return err
 		}
 	}
 
 	if IF.Group != 0 {
-		if err = ioctl(IF.FD, syscall.TUNSETGROUP, uintptr(IF.Group)); err != nil {
-			return nil, err
+		if err = tunnelCtl(IF.FD, syscall.TUNSETGROUP, uintptr(IF.Group)); err != nil {
+			return err
 		}
 	}
 
-	if C.Persistent {
-		if err = ioctl(IF.FD, syscall.TUNSETPERSIST, uintptr(1)); err != nil {
-			return nil, err
+	if IF.Persistent {
+		if err = tunnelCtl(IF.FD, syscall.TUNSETPERSIST, uintptr(1)); err != nil {
+			return err
 		}
 	}
 
-	IF.RWC = os.NewFile(IF.FD, "tun_"+C.Name)
+	IF.RWC = os.NewFile(IF.FD, "tun_"+IF.Name)
 	return
 }
 
-func ioctl(fd uintptr, request uintptr, argp uintptr) error {
+func socketCtl(request uintptr, argp uintptr) error {
+	fd, err := syscall.Socket(
+		syscall.AF_INET,
+		syscall.SOCK_DGRAM,
+		0,
+	)
+	defer syscall.Close(fd)
+	if err != nil {
+		return err
+	}
+
+	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), uintptr(request), argp)
+	if errno != 0 {
+		return os.NewSyscallError("ioctl", errno)
+	}
+	return nil
+}
+
+func tunnelCtl(fd uintptr, request uintptr, argp uintptr) error {
 	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, fd, uintptr(request), argp)
 	if errno != 0 {
 		return os.NewSyscallError("ioctl", errno)
