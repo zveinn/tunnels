@@ -9,8 +9,6 @@ import (
 	"os/exec"
 	"syscall"
 	"unsafe"
-
-	"github.com/jackpal/gateway"
 )
 
 type syscallAddAddrV4 struct {
@@ -54,7 +52,6 @@ type Interface struct {
 	Persistent  bool
 	TunnelFile  string
 
-	//
 	RWC io.ReadWriteCloser
 	FD  uintptr
 }
@@ -105,11 +102,6 @@ func (IF *Interface) Syscall_NetMask() (err error) {
 	}
 
 	return
-}
-
-func FindGateway() {
-	gw, err := gateway.DiscoverGateway()
-	fmt.Println(gw, err)
 }
 
 // func (IF *Interface) Syscall_Addrv6() (err error) {
@@ -293,6 +285,7 @@ type syscallCreateIF struct {
 func (IF *Interface) Create() (err error) {
 	if IF.TunnelFile == "" {
 		IF.TunnelFile = "/dev/net/tun"
+		// IF.TunnelFile = "/dev/net/tun"
 	}
 
 	fd, err := syscall.Open(IF.TunnelFile, os.O_RDWR|syscall.O_NONBLOCK, 0)
