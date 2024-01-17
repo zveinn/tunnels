@@ -87,7 +87,7 @@ type RWC struct {
 }
 
 func (rwc *RWC) Read(data []byte) (n int, err error) {
-	rwc.r0, _, rwc.e1 = syscall.RawSyscall6(
+	rwc.r0, _, rwc.e1 = syscall.Syscall6(
 		syscall.SYS_RECVFROM,
 		rwc.fdPtr,
 		rwc.buffPtr,
@@ -101,28 +101,6 @@ func (rwc *RWC) Read(data []byte) (n int, err error) {
 	return
 }
 
-// func (rwc *RWC) WritePTR(buff uintptr, buffLen uintptr) (n int, err error) {
-// 	rwc.addr.Addr[0] = data[16]
-// 	rwc.addr.Addr[1] = data[17]
-// 	rwc.addr.Addr[2] = data[18]
-// 	rwc.addr.Addr[3] = data[19]
-// 	IHL := ((data[0] << 4) >> 4) * 4
-// 	rwc.addr.Port = binary.BigEndian.Uint16(data[IHL+2 : IHL+4])
-// 	_, _, e1 := syscall.RawSyscall6(
-// 		syscall.SYS_SENDTO,
-// 		rwc.sfdPtr,
-// 		uintptr(unsafe.Pointer(&data[0])),
-// 		uintptr(len(data)),
-// 		0,
-// 		rwc.addrPtr,
-// 		rwc.addrLenPtr,
-// 	)
-// 	if e1 != 0 {
-// 		return 0, e1
-// 	}
-// 	return 0, nil
-// }
-
 func (rwc *RWC) Write(data []byte) (n int, err error) {
 	rwc.addr.Addr[0] = data[16]
 	rwc.addr.Addr[1] = data[17]
@@ -130,7 +108,7 @@ func (rwc *RWC) Write(data []byte) (n int, err error) {
 	rwc.addr.Addr[3] = data[19]
 	IHL := ((data[0] << 4) >> 4) * 4
 	rwc.addr.Port = binary.BigEndian.Uint16(data[IHL+2 : IHL+4])
-	_, _, e1 := syscall.RawSyscall6(
+	_, _, e1 := syscall.Syscall6(
 		syscall.SYS_SENDTO,
 		rwc.sfdPtr,
 		uintptr(unsafe.Pointer(&data[0])),
