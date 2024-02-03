@@ -1,3 +1,5 @@
+//go:build freebsd || linux || openbsd
+
 package tunnels
 
 import (
