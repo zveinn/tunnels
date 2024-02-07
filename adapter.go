@@ -86,8 +86,8 @@ func logMessage(level loggerLevel, timestamp uint64, msg *uint16) int {
 	log.Println(windows.UTF16PtrToString(msg))
 	return 0
 }
-func setupLogger(dll *lazyDLL) {
 
+func setupLogger(dll *lazyDLL) {
 	var callback uintptr
 	// log.Println("SETTING UP", runtime.GOARCH)
 
@@ -234,6 +234,7 @@ func (IF *Interface) ReceivePacket() (packet []byte, size uint16, err error) {
 		err = msg
 		return
 	}
+
 	packet = unsafe.Slice((*byte)(unsafe.Pointer(r0)), size)
 	return
 }

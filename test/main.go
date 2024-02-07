@@ -10,7 +10,6 @@ import (
 )
 
 func main() {
-
 	GUID, err := guid.NewV4()
 	if err != nil {
 		fmt.Println("unable to create windows GUID", err)
@@ -18,20 +17,23 @@ func main() {
 	}
 
 	IF := &tunnels.Interface{
-		Name:        "nvpn",
-		IPv4Address: "10.6.6.10",
-		IPv6Address: "fe80::1",
-		NetMask:     "255.255.255.0",
-		TxQueuelen:  3000,
-		MTU:         1501,
-		Persistent:  true,
-		GUID:        windows.GUID(GUID),
-		RingCap:     0x4000000,
+		Name:          "nvpn",
+		IPv4Address:   "10.4.4.4",
+		IPv6Address:   "fe80::1",
+		NetMask:       "255.255.255.0",
+		TxQueuelen:    3000,
+		MTU:           1501,
+		Persistent:    true,
+		GUID:          windows.GUID(GUID),
+		RingCap:       0x4000000,
+		RetransmitMS:  "500",
+		Gateway:       "10.4.4.4",
+		GatewayMetric: "1000",
 		// User:       1000,
 		// Group:      1000,
 	}
 
-	// fmt.Println(IF.Name)
+	// fmt.Println(IF.ame)
 	// fmt.Println(IF.IPv4Address)
 	// fmt.Println(IF.FD)
 	// fmt.Println(IF.Group)
@@ -42,12 +44,16 @@ func main() {
 	if err != nil {
 		fmt.Println("CREATE OUT:", err)
 	}
+	// err = IF.Syscall_Addr()
+	// if err != nil {
+	// 	fmt.Println("UP OUT:", err)
+	// }
 	err = IF.Syscall_UP()
 	if err != nil {
 		fmt.Println("UP OUT:", err)
 	}
 	for {
-		time.Sleep(1 * time.Second)
+		time.Sleep(20 * time.Millisecond)
 		packet, size, _ := IF.ReceivePacket()
 		if size == 0 {
 			continue
@@ -57,10 +63,6 @@ func main() {
 		fmt.Printf("%p\n", &packet)
 		fmt.Printf("%p\n", &packet[0])
 		fmt.Println(packet[9])
-		// data := gopacket.NewPacket(packet, layers.LayerTypeIPv4, gopacket.Default)
-		// fmt.Println(data)
-
-		// packetNew := make([]byte, size)
 	}
 	// copy(packetNew, packet)
 
@@ -140,5 +142,4 @@ func main() {
 		time.Sleep(1 * time.Second)
 	}
 	// err = IF.Syscall_MTU()
-
 }

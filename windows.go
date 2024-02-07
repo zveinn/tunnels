@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"strconv"
 	"syscall"
 
 	"golang.org/x/sys/windows"
@@ -42,7 +43,9 @@ type Interface struct {
 	Handle        uintptr
 	SessionHandle uintptr
 	RingCap       uint32
+	GatewayMetric string
 	RetransmitMS  string
+	IFIndex       int
 
 	// ReceiveBuffer []byte
 	// SendBuffer    []byte
@@ -52,6 +55,7 @@ type Interface struct {
 func (IF *Interface) Syscall_NetMask() (err error) {
 	return fmt.Errorf("netmask changes are not implemented on windows")
 }
+
 func (IF *Interface) Syscall_TXQueuelen() (err error) {
 	return fmt.Errorf("txqueuelen changes are not implemented on windows")
 }
@@ -70,20 +74,44 @@ func (IF *Interface) Syscall_UP() (err error) {
 	return nil
 }
 
-func (IF *Interface) Syscall_DOWN() (err error) {
-	// runtime.SetFinalizer(&A.AdapterHandle, AdapterCleanup)
-	// r1, _, msg := syscall.SyscallN(
-	// 	procWintunEndSession.Addr(),
-	// 	IF.SessionHandle)
-	// if r1 == 0 {
-	// 	err = msg
-	// }
+// type AdapterHandle struct {
+// 	Handle uintptr
+// }
 
-	cmd := exec.Command("netsh", "interface", "ipv4", "delete", "address", `name="`+IF.Name+`"`, "addr=", IF.IPv4Address, "gateway=", "All")
+//	func AdapterCleanup(AH *AdapterHandle) {
+//		// syscall.SyscallN(procWintunCloseAdapter.Addr(), 1, AH.handle, 0, 0)
+//	}
+func (IF *Interface) Syscall_StopReader() (err error) {
+	// AH := new(AdapterHandle)
+	// AH.Handle = IF.Handle
+	// runtime.SetFinalizer(AH, AdapterCleanup)
+
+	r1, _, msg := syscall.SyscallN(
+		procWintunEndSession.Addr(),
+		IF.SessionHandle)
+	if r1 == 0 {
+		err = msg
+	}
+
+	return
+}
+
+func (IF *Interface) Syscall_DOWN() (err error) {
+	cmd := exec.Command(
+		"netsh",
+		"interface",
+		"ipv4",
+		"delete",
+		"address",
+		`name="`+IF.Name+`"`,
+		"addr=",
+		IF.IPv4Address,
+		"gateway=",
+		"All",
+	)
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	ob, cerr := cmd.Output()
 	if cerr != nil {
-		// return fmt.Errorf("%s - syscall: %s - out: %s", cerr, err, ob)
 		return fmt.Errorf("%s - out: %s", cerr, ob)
 	}
 
@@ -102,9 +130,20 @@ func (IF *Interface) Syscall_Delete() (err error) {
 
 // netsh interface ipv4 set interface interface="Ethernet 2" retransmit=1
 func (IF *Interface) Syscall_Retransmit() (err error) {
-	cmd := exec.Command("netsh", "interface", "ipv4", "set", "interface", `interface="`+IF.Name+`"`, "retransmittime", IF.RetransmitMS)
+	cmd := exec.Command(
+		"netsh",
+		"interface",
+		"ipv4",
+		"set",
+		"interface",
+		`interface="`+IF.Name+`"`,
+		"retransmittime",
+		IF.RetransmitMS,
+	)
+
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	ob, cerr := cmd.Output()
+
 	if cerr != nil {
 		return fmt.Errorf("%s - out: %s ", ob, cerr)
 	}
@@ -113,7 +152,16 @@ func (IF *Interface) Syscall_Retransmit() (err error) {
 
 // netsh interface ipv4 set interface interface="Ethernet 2" mtu=1500
 func (IF *Interface) Syscall_MTU() (err error) {
-	cmd := exec.Command("netsh", "interface", "ipv4", "set", "interface", `interface="`+IF.Name+`"`, "mtu", string(IF.MTU))
+	cmd := exec.Command(
+		"netsh",
+		"interface",
+		"ipv4",
+		"set",
+		"interface",
+		`interface="`+IF.Name+`"`,
+		"mtu",
+		string(IF.MTU),
+	)
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	ob, cerr := cmd.Output()
 	if cerr != nil {
@@ -124,7 +172,33 @@ func (IF *Interface) Syscall_MTU() (err error) {
 
 func (IF *Interface) Syscall_Addr() (err error) {
 	fmt.Println(IF.Name, IF.IPv4Address, IF.Gateway)
-	cmd := exec.Command("netsh", "interface", "ipv4", "set", "address", `name="`+IF.Name+`"`, "static", IF.IPv4Address, IF.NetMask, IF.Gateway)
+	cmd := exec.Command(
+		"netsh",
+		"interface",
+		"ipv4",
+		"set",
+		"address",
+		`name="`+IF.Name+`"`,
+		"static",
+		IF.IPv4Address,
+		IF.NetMask,
+		IF.Gateway,
+		"gwmetric="+IF.GatewayMetric,
+	)
+
+	fmt.Println(
+		"netsh",
+		"interface",
+		"ipv4",
+		"set",
+		"address",
+		`name="`+IF.Name+`"`,
+		"static",
+		IF.IPv4Address,
+		IF.NetMask,
+		IF.Gateway,
+		"gwmetric="+IF.GatewayMetric,
+	)
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	ob, cerr := cmd.Output()
 	if cerr != nil {
@@ -132,11 +206,19 @@ func (IF *Interface) Syscall_Addr() (err error) {
 	}
 
 	return
-
 }
 
 func DNS_Set(IFNameOrIndex, DNSIP, Index string) (err error) {
-	cmd := exec.Command("netsh", "interface", "ipv4", "add", "dnsservers", `name=`+IFNameOrIndex, "address="+DNSIP, "index="+Index)
+	cmd := exec.Command(
+		"netsh",
+		"interface",
+		"ipv4",
+		"add",
+		"dnsservers",
+		`name=`+IFNameOrIndex,
+		"address="+DNSIP,
+		"index="+Index,
+	)
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	ob, cerr := cmd.Output()
 	if cerr != nil {
@@ -146,18 +228,58 @@ func DNS_Set(IFNameOrIndex, DNSIP, Index string) (err error) {
 	return nil
 }
 
-func IP_AddRoute(network string, gateway string, mask string, metric string) (err error) {
-
-	// fmt.Println("ADD ROUTE:", network, gateway, mask, metric)
+func IP_AddRoute(network string, gateway string, mask string, metric string, ifindex int) (err error) {
 	if metric == "0" {
 		metric = "1"
 	}
 
 	_ = IP_DelRoute(network, gateway, metric)
 
-	cmd := exec.Command("route", "ADD", network, "MASK", mask, gateway, "METRIC", metric)
+	var cmd *exec.Cmd
+	if ifindex != 0 {
+		cmd = exec.Command(
+			"route",
+			"add",
+			network,
+			"mask",
+			mask,
+			gateway,
+			"metric",
+			metric,
+			"IF",
+			strconv.Itoa(ifindex),
+		)
+	} else {
+		cmd = exec.Command(
+			"route",
+			"add",
+			network,
+			"mask",
+			mask,
+			gateway,
+			"metric",
+			metric,
+		)
+	}
+
+	fmt.Println(
+		"route",
+		"add",
+		network,
+		"mask",
+		mask,
+		gateway,
+		"metric",
+		metric,
+		"IF",
+		strconv.Itoa(ifindex),
+	)
+
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	ob, cerr := cmd.Output()
+
+	fmt.Println("ADD OUT:", string(ob), cerr)
+
 	if cerr != nil {
 		return fmt.Errorf("%s - out: %s", cerr, ob)
 	}
@@ -166,8 +288,12 @@ func IP_AddRoute(network string, gateway string, mask string, metric string) (er
 }
 
 func IP_DelRoute(network string, _ string, _ string) (err error) {
+	cmd := exec.Command(
+		"route",
+		"DELETE",
+		network,
+	)
 
-	cmd := exec.Command("route", "DELETE", network)
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	ob, cerr := cmd.Output()
 	if cerr != nil {
