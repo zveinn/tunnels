@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
-	"strconv"
 	"syscall"
 
 	"golang.org/x/sys/windows"
@@ -228,7 +227,7 @@ func DNS_Set(IFNameOrIndex, DNSIP, Index string) (err error) {
 	return nil
 }
 
-func IP_AddRoute(network string, gateway string, mask string, metric string, ifindex int) (err error) {
+func IP_AddRoute(network string, gateway string, mask string, metric string, ifindex string) (err error) {
 	if metric == "0" {
 		metric = "1"
 	}
@@ -236,7 +235,7 @@ func IP_AddRoute(network string, gateway string, mask string, metric string, ifi
 	_ = IP_DelRoute(network, gateway, metric)
 
 	var cmd *exec.Cmd
-	if ifindex != 0 {
+	if ifindex == "0" || ifindex == "" {
 		cmd = exec.Command(
 			"route",
 			"add",
@@ -246,8 +245,6 @@ func IP_AddRoute(network string, gateway string, mask string, metric string, ifi
 			gateway,
 			"metric",
 			metric,
-			"IF",
-			strconv.Itoa(ifindex),
 		)
 	} else {
 		cmd = exec.Command(
@@ -259,6 +256,8 @@ func IP_AddRoute(network string, gateway string, mask string, metric string, ifi
 			gateway,
 			"metric",
 			metric,
+			"IF",
+			ifindex,
 		)
 	}
 
@@ -272,7 +271,7 @@ func IP_AddRoute(network string, gateway string, mask string, metric string, ifi
 		"metric",
 		metric,
 		"IF",
-		strconv.Itoa(ifindex),
+		ifindex,
 	)
 
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
