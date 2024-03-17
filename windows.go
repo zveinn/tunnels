@@ -150,16 +150,52 @@ func (IF *Interface) Syscall_Retransmit() (err error) {
 }
 
 // netsh interface ipv4 set interface interface="Ethernet 2" mtu=1500
+// func (IF *Interface) Syscall_MTU() (err error) {
+// 	cmd := exec.Command(
+// 		"netsh",
+// 		"interface",
+// 		"ipv4",
+// 		"set",
+// 		"interface",
+// 		`interface="`+IF.Name+`"`,
+// 		"mtu",
+// 		string(IF.MTU),
+// 	)
+// 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+// 	ob, cerr := cmd.Output()
+// 	if cerr != nil {
+// 		return fmt.Errorf("%s - out: %s ", ob, cerr)
+// 	}
+// 	return
+// }
+
+// func (IF *Interface) Syscall_MTU() (err error) {
+// 	cmd := exec.Command(
+// 		"netsh",
+// 		"interface",
+// 		"ipv4",
+// 		"set",
+// 		"route",
+// 		IF.Name,
+// 		"mtu="+string(IF.MTU),
+// 	)
+// 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+// 	ob, cerr := cmd.Output()
+// 	if cerr != nil {
+// 		return fmt.Errorf("%s - out: %s ", ob, cerr)
+// 	}
+// 	return
+// }
+
 func (IF *Interface) Syscall_MTU() (err error) {
 	cmd := exec.Command(
 		"netsh",
 		"interface",
 		"ipv4",
 		"set",
-		"interface",
-		`interface="`+IF.Name+`"`,
-		"mtu",
-		string(IF.MTU),
+		"subinterface",
+		IF.Name,
+		"mtu="+string(IF.MTU),
 	)
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	ob, cerr := cmd.Output()
@@ -227,57 +263,84 @@ func DNS_Set(IFNameOrIndex, DNSIP, Index string) (err error) {
 	return nil
 }
 
-func IP_AddRoute(network string, gateway string, mask string, metric string, ifindex string) (err error) {
+func DNS_Del(IFNameOrIndex string) (err error) {
+	cmd := exec.Command(
+		"netsh",
+		"interface",
+		"ipv4",
+		"delete",
+		"dnsservers",
+		`name=`+IFNameOrIndex,
+		"all",
+	)
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	ob, cerr := cmd.Output()
+	if cerr != nil {
+		return fmt.Errorf("%s - out: %s", cerr, ob)
+	}
+
+	return nil
+}
+
+func IP_RouteMetric(network string, ifname string, metric string) (err error) {
+	if metric == "0" {
+		metric = "1"
+	}
+
+	cmd := exec.Command(
+		"netsh",
+		"interface",
+		"ipv4",
+		"set",
+		"route",
+		network,
+		ifname,
+		"metric="+metric,
+	)
+
+	// fmt.Println(
+	// 	"netsh",
+	// 	"interface",
+	// 	"ipv4",
+	// 	"add",
+	// 	"route",
+	// 	network,
+	// 	ifname,
+	// 	"metric="+metric,
+	// )
+
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	ob, cerr := cmd.Output()
+	if cerr != nil {
+		return fmt.Errorf("%s - out: %s", cerr, ob)
+	}
+
+
+	return
+}
+
+func IP_AddRouteV2(network string, ifname string, gateway string, metric string) (err error) {
 	if metric == "0" {
 		metric = "1"
 	}
 
 	_ = IP_DelRoute(network, gateway, metric)
-
-	var cmd *exec.Cmd
-	if ifindex == "0" || ifindex == "" {
-		cmd = exec.Command(
-			"route",
-			"add",
-			network,
-			"mask",
-			mask,
-			gateway,
-			"metric",
-			metric,
-		)
-	} else {
-		cmd = exec.Command(
-			"route",
-			"add",
-			network,
-			"mask",
-			mask,
-			gateway,
-			"metric",
-			metric,
-			"IF",
-			ifindex,
-		)
-	}
-
-	fmt.Println(
-		"route",
+	cmd := exec.Command(
+		"netsh",
+		"interface",
+		"ipv4",
 		"add",
+		"route",
 		network,
-		"mask",
-		mask,
+		ifname,
 		gateway,
-		"metric",
 		metric,
-		"IF",
-		ifindex,
 	)
+
+	// fmt.Println("netsh", "interface", "ipv4", "add", "route", network, ifname, gateway, metric)
 
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	ob, cerr := cmd.Output()
-
-	fmt.Println("ADD OUT:", string(ob), cerr)
 
 	if cerr != nil {
 		return fmt.Errorf("%s - out: %s", cerr, ob)
@@ -285,6 +348,7 @@ func IP_AddRoute(network string, gateway string, mask string, metric string, ifi
 
 	return
 }
+
 
 func IP_DelRoute(network string, _ string, _ string) (err error) {
 	cmd := exec.Command(

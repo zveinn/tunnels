@@ -101,6 +101,8 @@ func setupLogger(dll *lazyDLL) {
 		})
 	} else if runtime.GOARCH == "amd64" || runtime.GOARCH == "arm64" {
 		callback = windows.NewCallback(logMessage)
+	} else {
+		callback = windows.NewCallback(logMessage)
 	}
 
 	syscall.SyscallN(dll.NewProc("WintunSetLogger").Addr(), callback)
