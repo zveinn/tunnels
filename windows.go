@@ -315,7 +315,6 @@ func IP_RouteMetric(network string, ifname string, metric string) (err error) {
 		return fmt.Errorf("%s - out: %s", cerr, ob)
 	}
 
-
 	return
 }
 
@@ -348,7 +347,6 @@ func IP_AddRouteV2(network string, ifname string, gateway string, metric string)
 
 	return
 }
-
 
 func IP_DelRoute(network string, _ string, _ string) (err error) {
 	cmd := exec.Command(

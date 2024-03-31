@@ -4,31 +4,29 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Microsoft/go-winio/pkg/guid"
 	"github.com/zveinn/tunnels"
-	"golang.org/x/sys/windows"
 )
 
 func main() {
-	GUID, err := guid.NewV4()
-	if err != nil {
-		fmt.Println("unable to create windows GUID", err)
-		return
-	}
+	// GUID, err := guid.NewV4()
+	// if err != nil {
+	// 	fmt.Println("unable to create windows GUID", err)
+	// 	return
+	// }
 
 	IF := &tunnels.Interface{
-		Name:          "nvpn",
-		IPv4Address:   "10.4.4.4",
-		IPv6Address:   "fe80::1",
-		NetMask:       "255.255.255.0",
-		TxQueuelen:    3000,
-		MTU:           1501,
-		Persistent:    true,
-		GUID:          windows.GUID(GUID),
-		RingCap:       0x4000000,
-		RetransmitMS:  "500",
-		Gateway:       "10.4.4.4",
-		GatewayMetric: "1000",
+		Name:        "nvpn",
+		IPv4Address: "10.4.4.4",
+		IPv6Address: "fe80::1",
+		NetMask:     "255.255.255.0",
+		TxQueuelen:  3000,
+		MTU:         1501,
+		Persistent:  true,
+		// GUID:          windows.GUID(GUID),
+		// RingCap:       0x4000000,
+		// RetransmitMS:  "500",
+		// Gateway:       "10.4.4.4",
+		// GatewayMetric: "1000",
 		// User:       1000,
 		// Group:      1000,
 	}
@@ -40,29 +38,29 @@ func main() {
 	// fmt.Println(IF.User)
 	// fmt.Println(IF.RWC)
 
-	err = IF.CreateOrOpen()
-	if err != nil {
-		fmt.Println("CREATE OUT:", err)
-	}
+	// err := IF.CreateOrOpen()
+	// if err != nil {
+	// 	fmt.Println("CREATE OUT:", err)
+	// }
 	// err = IF.Syscall_Addr()
 	// if err != nil {
 	// 	fmt.Println("UP OUT:", err)
 	// }
-	err = IF.Syscall_UP()
+	err := IF.Syscall_UP()
 	if err != nil {
 		fmt.Println("UP OUT:", err)
 	}
 	for {
 		time.Sleep(20 * time.Millisecond)
-		packet, size, _ := IF.ReceivePacket()
-		if size == 0 {
-			continue
-		}
-		fmt.Println(size, len(packet), err)
-		fmt.Println(packet)
-		fmt.Printf("%p\n", &packet)
-		fmt.Printf("%p\n", &packet[0])
-		fmt.Println(packet[9])
+		// packet, size, _ := IF.ReceivePacket()
+		// if size == 0 {
+		// 	continue
+		// }
+		// fmt.Println(size, len(packet), err)
+		// fmt.Println(packet)
+		// fmt.Printf("%p\n", &packet)
+		// fmt.Printf("%p\n", &packet[0])
+		// fmt.Println(packet[9])
 	}
 	// copy(packetNew, packet)
 
