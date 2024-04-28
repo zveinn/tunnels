@@ -33,6 +33,23 @@ func (r *RawSocket) Create() (err error) {
 		syscall.Close(fd)
 		return sockErr
 	}
+
+	err = syscall.SetNonblock(fd, true)
+	if err != nil {
+		syscall.Close(fd)
+		return err
+	}
+
+	if err := syscall.SetsockoptInt(
+		fd,
+		syscall.SOL_SOCKET,
+		syscall.SO_REUSEADDR,
+		1,
+	); err != nil {
+		syscall.Close(fd)
+		return err
+	}
+
 	sfd, sockErr := syscall.Socket(
 		syscall.AF_INET,
 		syscall.SOCK_RAW,

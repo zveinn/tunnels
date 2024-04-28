@@ -3,7 +3,7 @@ module github.com/zveinn/tunnels
 go 1.21.1
 
 require (
-	github.com/Microsoft/go-winio v0.6.1
+	github.com/google/gopacket v1.1.19
 	github.com/jackpal/gateway v1.0.13
 	golang.org/x/sys v0.13.0
 )
