@@ -7,6 +7,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
 	"github.com/zveinn/tunnels"
 )
 
@@ -73,9 +75,9 @@ func rawSock() {
 		} else {
 			tid := C.getThreadID()
 			fmt.Println("RID:", tid)
-			// x := gopacket.NewPacket(socket.SocketBuffer[:n], layers.LayerTypeIPv4, gopacket.Default)
-			// fmt.Println(x)
-			// fmt.Println(socket.SocketBuffer[:n])
+			x := gopacket.NewPacket(socket.SocketBuffer[:n], layers.LayerTypeIPv4, gopacket.Default)
+			fmt.Println(x)
+			fmt.Println(socket.SocketBuffer[:n])
 		}
 		// fmt.Println(n)
 		// time.Sleep(1 * time.Second)
